@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scanner Resi Paket</title>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <title>Scanner Resi Paket (Fast & High Precision)</title>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; padding: 15px; background-color: #f5f5f5; }
     .card { background: white; padding: 20px; border-radius: 10px; max-width: 450px; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    #reader { width: 100%; margin: 15px 0; border-radius: 8px; overflow: hidden; }
+    #interactive.viewport { width: 100%; height: 250px; position: relative; overflow: hidden; border-radius: 8px; margin: 15px 0; background: #000; }
+    #interactive.viewport video { width: 100%; height: 100%; object-fit: cover; }
+    #interactive.viewport canvas.drawingBuffer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     select { padding: 12px; font-size: 16px; margin: 10px 0; width: 100%; border-radius: 6px; border: 1px solid #ccc; }
     .counter { font-size: 18px; font-weight: bold; background: #eef2ff; color: #3730a3; padding: 10px; border-radius: 6px; margin: 10px 0; }
     #status { margin-top: 15px; font-weight: bold; font-size: 16px; min-height: 24px; padding: 8px; border-radius: 5px; }
@@ -45,32 +47,68 @@
       <option value="M Rizki Ardian">M Rizki Ardian</option>
     </select>
 
-    <div id="reader"></div>
-    <div id="status">Siap melakukan scan...</div>
+    <div id="interactive" class="viewport"></div>
+    <div id="status">Mengaktifkan Kamera...</div>
   </div>
 
   <script>
-    // MASUKKAN URL GOOGLE APPS SCRIPT ANDA DI SINI
+    // GANTI TEKS DI BAWAH DENGAN URL GOOGLE APPS SCRIPT ANDA
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfjK7dasVOtXekd4Yl8AL--YSATNtpBHd8ASpX2G4YGUKtYJcnkjjiyx-7JK6LEYq7/exec";
 
     let lastScannedCode = "";
     let isProcessing = false;
 
-    // Ambil jumlah total data saat halaman web pertama kali dibuka
     function fetchTotalCount() {
-      fetch(SCRIPT_URL)
+      fetch(SCRIPT_URL, { redirect: "follow" })
         .then(res => res.json())
         .then(data => {
           if (data.total !== undefined) {
             document.getElementById("total-counter").innerText = data.total;
           }
         })
-        .catch(err => console.log("Gagal memuat total data awal"));
+        .catch(err => console.log("Gagal memuat data awal"));
     }
 
-    function onScanSuccess(decodedText) {
-      if (isProcessing || decodedText === lastScannedCode) return;
-      
+    function initQuagga() {
+      Quagga.init({
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: document.querySelector('#interactive'),
+          constraints: {
+            width: { min: 1280, ideal: 1920 },
+            height: { min: 720, ideal: 1080 },
+            facingMode: "environment"
+          },
+        },
+        locator: { patchSize: "medium", halfSample: false },
+        numOfWorkers: navigator.hardwareConcurrency || 4,
+        decoder: { readers: ["code_128_reader", "code_39_reader"] },
+        locate: true
+      }, function(err) {
+          if (err) {
+              document.getElementById("status").innerText = "Gagal membuka kamera!";
+              return;
+          }
+          Quagga.start();
+          document.getElementById("status").className = "";
+          document.getElementById("status").innerText = "Siap melakukan scan...";
+      });
+
+      Quagga.onDetected(function(result) {
+        let code = result.codeResult.code;
+        if (!code || code.length < 6) return;
+        if (isProcessing || code === lastScannedCode) return;
+        
+        let errors = result.codeResult.decodedCodes.filter(x => x.error !== undefined).map(x => x.error);
+        let avgError = errors.reduce((a, b) => a + b, 0) / errors.length;
+        if (avgError > 0.15) return;
+
+        processResi(code);
+      });
+    }
+
+    function processResi(decodedText) {
       isProcessing = true;
       lastScannedCode = decodedText;
       const selectedKurir = document.getElementById("kurir").value;
@@ -81,6 +119,8 @@
 
       fetch(SCRIPT_URL, {
         method: "POST",
+        mode: "cors",
+        redirect: "follow",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           resi: decodedText,
@@ -101,11 +141,10 @@
           statusEl.innerText = `❌ Gagal: ${response.message}`;
         }
 
-        // Jeda 1 detik sebelum diperbolehkan scan resi lain
         setTimeout(() => {
           isProcessing = false;
           lastScannedCode = "";
-        }, 1000);
+        }, 1500);
       })
       .catch(err => {
         statusEl.className = "error";
@@ -113,30 +152,11 @@
         setTimeout(() => {
           isProcessing = false;
           lastScannedCode = "";
-        }, 2500);
+        }, 1500);
       });
     }
 
-   // Konfigurasi Kamera Resolusi Tinggi & Pengaturan Scanner
-    const config = {
-      fps: 15, // Ditingkatkan agar pemrosesan frame lebih cepat
-      qrbox: { width: 320, height: 120 }, // Dimensi persegi panjang (cocok untuk barcode resi)
-      aspectRatio: 1.0,
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true // Gunakan hardware detector bawaan HP jika ada (Jauh lebih tajam)
-      },
-      videoConstraints: {
-        facingMode: "environment",
-        width: { min: 1280, ideal: 1920, max: 3840 }, // Paksa kamera pakai resolusi tinggi/Full HD
-        height: { min: 720, ideal: 1080, max: 2160 },
-        focusMode: "continuous" // Paksa autofokus terus-menerus
-      }
-    };
-
-    const html5QrcodeScanner = new Html5QrcodeScanner("reader", config, false);
-    html5QrcodeScanner.render(onScanSuccess);
-
-    // Jalankan fungsi hitung total data saat aplikasi dibuka
+    initQuagga();
     fetchTotalCount();
   </script>
 </body>
