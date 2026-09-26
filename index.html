@@ -1,35 +1,53 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scan Barcode Resi</title>
-  <!-- Library html5-qrcode untuk scan barcode via kamera -->
+  <title>Scanner Resi Paket</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-    #reader { width: 100%; max-width: 400px; margin: 0 auto; }
-    select, button { padding: 10px; font-size: 16px; margin: 10px 0; width: 100%; max-width: 400px; }
-    #status { margin-top: 15px; font-weight: bold; }
+    body { font-family: Arial, sans-serif; text-align: center; padding: 15px; background-color: #f5f5f5; }
+    .card { background: white; padding: 20px; border-radius: 10px; max-width: 450px; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    #reader { width: 100%; margin: 15px 0; border-radius: 8px; overflow: hidden; }
+    select { padding: 12px; font-size: 16px; margin: 10px 0; width: 100%; border-radius: 6px; border: 1px solid #ccc; }
+    .counter { font-size: 18px; font-weight: bold; background: #eef2ff; color: #3730a3; padding: 10px; border-radius: 6px; margin: 10px 0; }
+    #status { margin-top: 15px; font-weight: bold; font-size: 16px; min-height: 24px; padding: 8px; border-radius: 5px; }
+    .success { background-color: #d1fae5; color: #065f46; }
+    .duplicate { background-color: #fef3c7; color: #92400e; }
+    .error { background-color: #fee2e2; color: #991b1b; }
+    .loading { background-color: #e0f2fe; color: #075985; }
   </style>
 </head>
 <body>
 
-  <h2>Scanner Resi Paket</h2>
+  <div class="card">
+    <h2>Scanner Resi Paket</h2>
 
-  <label for="kurir">Pilih Kurir:</label><br>
-  <select id="kurir">
-    <option value="J&T">J&T</option>
-    <option value="JNE">JNE</option>
-    <option value="SiCepat">SiCepat</option>
-    <option value="Shopee Express">Shopee Express</option>
-    <option value="Anteraja">Anteraja</option>
-    <option value="Lainnya">Lainnya</option>
-  </select>
+    <div class="counter">
+      Total Resi Terscan: <span id="total-counter">0</span>
+    </div>
 
-  <div id="reader"></div>
-  <p id="status"></p>
+    <label for="kurir" style="font-weight: bold; display: block; text-align: left;">Pilih Nama Kurir / Petugas:</label>
+    <select id="kurir">
+      <option value="Akhmad Nuruddin">Akhmad Nuruddin</option>
+      <option value="Muhammad Fitroh">Muhammad Fitroh</option>
+      <option value="Ozi Sahara">Ozi Sahara</option>
+      <option value="Aang Khunaefi">Aang Khunaefi</option>
+      <option value="Moch Teguh Dwi Cahyo">Moch Teguh Dwi Cahyo</option>
+      <option value="Rian Fadli">Rian Fadli</option>
+      <option value="Rofi Septian">Rofi Septian</option>
+      <option value="Agus Dwi Irgi">Agus Dwi Irgi</option>
+      <option value="M Kharis Rizqi">M Kharis Rizqi</option>
+      <option value="M Rofik Baktiar">M Rofik Baktiar</option>
+      <option value="Navida">Navida</option>
+      <option value="Roi Adi Pranata">Roi Adi Pranata</option>
+      <option value="Adi Candra">Adi Candra</option>
+      <option value="M Rizki Ardian">M Rizki Ardian</option>
+    </select>
+
+    <div id="reader"></div>
+    <div id="status">Siap melakukan scan...</div>
+  </div>
 
   <script>
     // MASUKKAN URL GOOGLE APPS SCRIPT ANDA DI SINI
@@ -38,7 +56,19 @@
     let lastScannedCode = "";
     let isProcessing = false;
 
-    function onScanSuccess(decodedText, decodedResult) {
+    // Ambil jumlah total data saat halaman web pertama kali dibuka
+    function fetchTotalCount() {
+      fetch(SCRIPT_URL)
+        .then(res => res.json())
+        .then(data => {
+          if (data.total !== undefined) {
+            document.getElementById("total-counter").innerText = data.total;
+          }
+        })
+        .catch(err => console.log("Gagal memuat total data awal"));
+    }
+
+    function onScanSuccess(decodedText) {
       if (isProcessing || decodedText === lastScannedCode) return;
       
       isProcessing = true;
@@ -46,39 +76,57 @@
       const selectedKurir = document.getElementById("kurir").value;
       const statusEl = document.getElementById("status");
 
-      statusEl.style.color = "blue";
-      statusEl.innerText = `Mengirim Resi: ${decodedText}...`;
+      statusEl.className = "loading";
+      statusEl.innerText = `Memeriksa Resi: ${decodedText}...`;
 
       fetch(SCRIPT_URL, {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           resi: decodedText,
           kurir: selectedKurir
         })
       })
-      .then(() => {
-        statusEl.style.color = "green";
-        statusEl.innerText = `Berhasil disimpan: ${decodedText} (${selectedKurir})`;
+      .then(res => res.json())
+      .then(response => {
+        if (response.result === "success") {
+          statusEl.className = "success";
+          statusEl.innerText = `✅ [BERHASIL] ${decodedText} (${selectedKurir})`;
+          document.getElementById("total-counter").innerText = response.total;
+        } else if (response.result === "duplicate") {
+          statusEl.className = "duplicate";
+          statusEl.innerText = `⚠️ [DUPLIKAT] Resi ${decodedText} SUDAH ADA!`;
+        } else {
+          statusEl.className = "error";
+          statusEl.innerText = `❌ Gagal: ${response.message}`;
+        }
+
+        // Jeda 2,5 detik sebelum diperbolehkan scan resi lain
         setTimeout(() => {
           isProcessing = false;
           lastScannedCode = "";
-        }, 3000); // Delay 3 detik sebelum scan berikutnya
+        }, 2500);
       })
       .catch(err => {
-        statusEl.style.color = "red";
-        statusEl.innerText = "Gagal menyimpan data!";
-        isProcessing = false;
+        statusEl.className = "error";
+        statusEl.innerText = "❌ Terjadi kesalahan koneksi!";
+        setTimeout(() => {
+          isProcessing = false;
+          lastScannedCode = "";
+        }, 2500);
       });
     }
 
+    // Inisialisasi scanner
     const html5QrcodeScanner = new Html5QrcodeScanner(
       "reader", 
       { fps: 10, qrbox: { width: 250, height: 150 } }, 
-      /* verbose= */ false
+      false
     );
     html5QrcodeScanner.render(onScanSuccess);
+
+    // Jalankan fungsi hitung total data saat aplikasi dibuka
+    fetchTotalCount();
   </script>
 </body>
 </html>
