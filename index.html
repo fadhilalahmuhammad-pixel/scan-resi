@@ -1,1 +1,84 @@
 
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan Barcode Resi</title>
+  <!-- Library html5-qrcode untuk scan barcode via kamera -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+    #reader { width: 100%; max-width: 400px; margin: 0 auto; }
+    select, button { padding: 10px; font-size: 16px; margin: 10px 0; width: 100%; max-width: 400px; }
+    #status { margin-top: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <h2>Scanner Resi Paket</h2>
+
+  <label for="kurir">Pilih Kurir:</label><br>
+  <select id="kurir">
+    <option value="J&T">J&T</option>
+    <option value="JNE">JNE</option>
+    <option value="SiCepat">SiCepat</option>
+    <option value="Shopee Express">Shopee Express</option>
+    <option value="Anteraja">Anteraja</option>
+    <option value="Lainnya">Lainnya</option>
+  </select>
+
+  <div id="reader"></div>
+  <p id="status"></p>
+
+  <script>
+    // MASUKKAN URL GOOGLE APPS SCRIPT ANDA DI SINI
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfjK7dasVOtXekd4Yl8AL--YSATNtpBHd8ASpX2G4YGUKtYJcnkjjiyx-7JK6LEYq7/exec";
+
+    let lastScannedCode = "";
+    let isProcessing = false;
+
+    function onScanSuccess(decodedText, decodedResult) {
+      if (isProcessing || decodedText === lastScannedCode) return;
+      
+      isProcessing = true;
+      lastScannedCode = decodedText;
+      const selectedKurir = document.getElementById("kurir").value;
+      const statusEl = document.getElementById("status");
+
+      statusEl.style.color = "blue";
+      statusEl.innerText = `Mengirim Resi: ${decodedText}...`;
+
+      fetch(SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resi: decodedText,
+          kurir: selectedKurir
+        })
+      })
+      .then(() => {
+        statusEl.style.color = "green";
+        statusEl.innerText = `Berhasil disimpan: ${decodedText} (${selectedKurir})`;
+        setTimeout(() => {
+          isProcessing = false;
+          lastScannedCode = "";
+        }, 3000); // Delay 3 detik sebelum scan berikutnya
+      })
+      .catch(err => {
+        statusEl.style.color = "red";
+        statusEl.innerText = "Gagal menyimpan data!";
+        isProcessing = false;
+      });
+    }
+
+    const html5QrcodeScanner = new Html5QrcodeScanner(
+      "reader", 
+      { fps: 10, qrbox: { width: 250, height: 150 } }, 
+      /* verbose= */ false
+    );
+    html5QrcodeScanner.render(onScanSuccess);
+  </script>
+</body>
+</html>
