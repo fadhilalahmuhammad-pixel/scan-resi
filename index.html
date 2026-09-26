@@ -101,11 +101,11 @@
           statusEl.innerText = `❌ Gagal: ${response.message}`;
         }
 
-        // Jeda 2,5 detik sebelum diperbolehkan scan resi lain
+        // Jeda 1 detik sebelum diperbolehkan scan resi lain
         setTimeout(() => {
           isProcessing = false;
           lastScannedCode = "";
-        }, 2500);
+        }, 1000);
       })
       .catch(err => {
         statusEl.className = "error";
