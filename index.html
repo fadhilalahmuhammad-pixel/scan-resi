@@ -3,20 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scanner Resi Paket</title>
-  <!-- Library Scan Resmi & Stabil -->
+  <title>Fast Scanner Resi Paket</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 15px; background-color: #f5f5f5; }
-    .card { background: white; padding: 20px; border-radius: 10px; max-width: 450px; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    #reader { width: 100%; margin: 15px 0; border-radius: 8px; overflow: hidden; }
-    select { padding: 12px; font-size: 16px; margin: 10px 0; width: 100%; border-radius: 6px; border: 1px solid #ccc; }
-    .counter { font-size: 18px; font-weight: bold; background: #eef2ff; color: #3730a3; padding: 10px; border-radius: 6px; margin: 10px 0; }
-    #status { margin-top: 15px; font-weight: bold; font-size: 16px; min-height: 24px; padding: 8px; border-radius: 5px; }
-    .success { background-color: #d1fae5; color: #065f46; }
-    .duplicate { background-color: #fef3c7; color: #92400e; }
-    .error { background-color: #fee2e2; color: #991b1b; }
-    .loading { background-color: #e0f2fe; color: #075985; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 12px; background-color: #f1f5f9; margin: 0; }
+    .card { background: white; padding: 16px; border-radius: 12px; max-width: 450px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    h2 { margin-top: 5px; margin-bottom: 15px; font-size: 20px; color: #0f172a; }
+    #reader { width: 100%; margin: 10px 0; border-radius: 8px; overflow: hidden; background: #000; }
+    select { padding: 12px; font-size: 16px; margin: 8px 0; width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: 500; }
+    .counter-box { display: flex; justify-content: space-between; background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; }
+    .counter-title { font-size: 14px; color: #1e40af; font-weight: 600; }
+    .counter-val { font-size: 20px; color: #1e3a8a; font-weight: bold; }
+    #status { margin-top: 12px; font-weight: 700; font-size: 15px; min-height: 28px; padding: 12px; border-radius: 8px; transition: all 0.2s ease; }
+    
+    .status-ready { background-color: #f1f5f9; color: #475569; }
+    .status-success { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+    .status-duplicate { background-color: #fef3c7; color: #b45309; border: 1px solid #fde047; }
+    .status-error { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    
+    /* Indikator Antrean Sync */
+    .sync-info { font-size: 12px; color: #64748b; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -24,11 +30,12 @@
   <div class="card">
     <h2>Scanner Resi Paket</h2>
 
-    <div class="counter">
-      Total Resi Terscan: <span id="total-counter">0</span>
+    <div class="counter-box">
+      <span class="counter-title">Total Resi Terscan:</span>
+      <span class="counter-val" id="total-counter">0</span>
     </div>
 
-    <label for="kurir" style="font-weight: bold; display: block; text-align: left;">Pilih Nama Kurir / Petugas:</label>
+    <label for="kurir" style="font-weight: 600; display: block; text-align: left; font-size: 13px; color: #334155;">PILIH NAMA KURIR / PETUGAS:</label>
     <select id="kurir">
       <option value="Akhmad Nuruddin">Akhmad Nuruddin</option>
       <option value="Muhammad Fitroh">Muhammad Fitroh</option>
@@ -47,87 +54,125 @@
     </select>
 
     <div id="reader"></div>
-    <div id="status">Mengaktifkan Kamera...</div>
+    <div id="status" class="status-ready">Siap Melakukan Scan...</div>
+    <div class="sync-info" id="sync-status">Antrean Pengiriman: 0</div>
   </div>
 
   <script>
-    // PASTI KAN URL INI SAMA DENGAN URL WEB APP GOOGLE SCRIPT ANDA
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfjK7dasVOtXekd4Yl8AL--YSATNtpBHd8ASpX2G4YGUKtYJcnkjjiyx-7JK6LEYq7/exec";
+    // MASUKKAN URL GOOGLE APPS SCRIPT ANDA
+    const SCRIPT_URL = "URL_WEB_APP_GOOGLE_SCRIPT_ANDA";
 
-    let lastScannedCode = "";
-    let isProcessing = false;
+    let localScannedSet = new Set();
+    let scanQueue = [];
+    let isSyncing = false;
+    let totalCount = 0;
+    let lastCode = "";
+    let isProcessingScan = false;
 
-    // Ambil total data dari Google Sheets saat pertama kali dibuka
-    function fetchTotalCount() {
+    // Audio efek BEEP saat berhasil scan
+    const beepSound = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YUtvT18AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8=");
+
+    // Ambil data awal dari Spreadsheet
+    function initData() {
       fetch(SCRIPT_URL, { redirect: "follow" })
         .then(res => res.json())
         .then(data => {
           if (data.total !== undefined) {
-            document.getElementById("total-counter").innerText = data.total;
+            totalCount = data.total;
+            document.getElementById("total-counter").innerText = totalCount;
           }
         })
-        .catch(err => console.log("Gagal memuat total data"));
+        .catch(err => console.log("Gagal sync awal"));
     }
 
-    // Fungsi Pengiriman Data
+    function playBeep() {
+      try { beepSound.play(); } catch(e){}
+    }
+
+    // FUNGSI SCAN UTAMA (INSTAN 0 DETIK)
     function onScanSuccess(decodedText) {
-      if (isProcessing || decodedText === lastScannedCode) return;
+      const resi = decodedText.trim();
+
+      if (isProcessingScan || resi === lastCode) return;
       
-      isProcessing = true;
-      lastScannedCode = decodedText;
+      isProcessingScan = true;
+      lastCode = resi;
+      
       const selectedKurir = document.getElementById("kurir").value;
       const statusEl = document.getElementById("status");
 
-      statusEl.className = "loading";
-      statusEl.innerText = `Memeriksa Resi: ${decodedText}...`;
+      // 1. CEK DUPLIKAT LOKAL (INSTAN)
+      if (localScannedSet.has(resi.toLowerCase())) {
+        statusEl.className = "status-duplicate";
+        statusEl.innerText = `⚠️ [DUPLIKAT] ${resi} Sudah Ada!`;
+        setTimeout(() => {
+          isProcessingScan = false;
+          lastCode = "";
+        }, 1200);
+        return;
+      }
+
+      // 2. TAMPILKAN HASIL BERHASIL SECARA INSTAN ALA APPSHEET
+      localScannedSet.add(resi.toLowerCase());
+      totalCount++;
+      document.getElementById("total-counter").innerText = totalCount;
+      
+      statusEl.className = "status-success";
+      statusEl.innerText = `✅ [BERHASIL] ${resi}`;
+      playBeep();
+
+      // 3. MASUKKAN KE ANTREAN BACKGROUND
+      scanQueue.push({ resi: resi, kurir: selectedKurir });
+      updateSyncStatus();
+      processQueue();
+
+      // Siap untuk scan resi berikutnya dalam 0.8 detik
+      setTimeout(() => {
+        isProcessingScan = false;
+        lastCode = "";
+      }, 800);
+    }
+
+    function updateSyncStatus() {
+      document.getElementById("sync-status").innerText = `Antrean Pengiriman: ${scanQueue.length}`;
+    }
+
+    // PENGIRIMAN BACKGROUND KE GOOGLE SHEETS
+    function processQueue() {
+      if (isSyncing || scanQueue.length === 0) return;
+
+      isSyncing = true;
+      const item = scanQueue[0];
 
       fetch(SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          resi: decodedText,
-          kurir: selectedKurir
-        })
+        body: JSON.stringify(item)
       })
       .then(res => res.json())
       .then(response => {
-        if (response.result === "success") {
-          statusEl.className = "success";
-          statusEl.innerText = `✅ [BERHASIL] ${decodedText} (${selectedKurir})`;
-          document.getElementById("total-counter").innerText = response.total;
-        } else if (response.result === "duplicate") {
-          statusEl.className = "duplicate";
-          statusEl.innerText = `⚠️ [DUPLIKAT] Resi ${decodedText} SUDAH ADA!`;
-        } else {
-          statusEl.className = "error";
-          statusEl.innerText = `❌ Gagal: ${response.message}`;
-        }
-
-        // Jeda 1.5 detik sebelum bisa scan resi berikutnya
-        setTimeout(() => {
-          isProcessing = false;
-          lastScannedCode = "";
-        }, 1500);
+        // Hapus item dari antrean jika sukses
+        scanQueue.shift();
+        updateSyncStatus();
+        isSyncing = false;
+        processQueue(); // Lanjutkan antrean berikutnya jika ada
       })
       .catch(err => {
-        statusEl.className = "error";
-        statusEl.innerText = "❌ Terjadi kesalahan koneksi!";
+        // Jika gagal koneksi, coba lagi setelah 3 detik
         setTimeout(() => {
-          isProcessing = false;
-          lastScannedCode = "";
-        }, 1500);
+          isSyncing = false;
+          processQueue();
+        }, 3000);
       });
     }
 
-    // Konfigurasi Scanner yang Ditingkatkan (Kamera Fokus & Persegi Panjang)
+    // Inisialisasi Scanner
     const html5QrcodeScanner = new Html5QrcodeScanner(
       "reader", 
       { 
-        fps: 15, 
-        qrbox: { width: 300, height: 130 }, // Kotak memanjang khusus barcode 1D resi
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true // Gunakan pendeteksi hardware HP jika ada
-        },
+        fps: 20, // Kecepatan frame ditingkatkan
+        qrbox: { width: 320, height: 130 },
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         videoConstraints: {
           facingMode: "environment",
           width: { min: 1280, ideal: 1920 },
@@ -138,10 +183,7 @@
     );
     
     html5QrcodeScanner.render(onScanSuccess);
-    document.getElementById("status").className = "";
-    document.getElementById("status").innerText = "Siap melakukan scan...";
-
-    fetchTotalCount();
+    initData();
   </script>
 </body>
 </html>
