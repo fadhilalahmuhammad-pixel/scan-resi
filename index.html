@@ -7,22 +7,27 @@
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 12px; background-color: #f1f5f9; margin: 0; }
-    .card { background: white; padding: 16px; border-radius: 12px; max-width: 450px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    h2 { margin-top: 5px; margin-bottom: 15px; font-size: 20px; color: #0f172a; }
-    #reader { width: 100%; margin: 10px 0; border-radius: 8px; overflow: hidden; background: #000; }
-    select { padding: 12px; font-size: 16px; margin: 8px 0; width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: 500; }
-    .counter-box { display: flex; justify-content: space-between; background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; }
-    .counter-title { font-size: 14px; color: #1e40af; font-weight: 600; }
-    .counter-val { font-size: 20px; color: #1e3a8a; font-weight: bold; }
-    #status { margin-top: 12px; font-weight: 700; font-size: 15px; min-height: 28px; padding: 12px; border-radius: 8px; transition: all 0.2s ease; }
+    .card { background: white; padding: 16px; border-radius: 12px; max-width: 420px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    h2 { margin-top: 5px; margin-bottom: 12px; font-size: 18px; color: #0f172a; }
+    
+    /* Ukuran Kamera Diperkecil & Dibuat Ringkas */
+    #reader { width: 100%; max-width: 320px; margin: 10px auto; border-radius: 10px; overflow: hidden; background: #000; }
+    #reader video { object-fit: cover; height: 200px !important; }
+    
+    select { padding: 10px 12px; font-size: 15px; margin: 6px 0; width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: 600; color: #1e293b; }
+    
+    .counter-box { display: flex; justify-content: space-between; align-items: center; background: #eff6ff; border: 1px solid #bfdbfe; padding: 10px 14px; border-radius: 8px; margin-bottom: 10px; }
+    .counter-title { font-size: 13px; color: #1e40af; font-weight: 600; }
+    .counter-val { font-size: 22px; color: #1e3a8a; font-weight: bold; }
+    
+    #status { margin-top: 10px; font-weight: 700; font-size: 14px; min-height: 24px; padding: 10px; border-radius: 8px; transition: all 0.2s ease; }
     
     .status-ready { background-color: #f1f5f9; color: #475569; }
     .status-success { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
     .status-duplicate { background-color: #fef3c7; color: #b45309; border: 1px solid #fde047; }
     .status-error { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
     
-    /* Indikator Antrean Sync */
-    .sync-info { font-size: 12px; color: #64748b; margin-top: 6px; }
+    .sync-info { font-size: 11px; color: #64748b; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -30,13 +35,8 @@
   <div class="card">
     <h2>Scanner Resi Paket</h2>
 
-    <div class="counter-box">
-      <span class="counter-title">Total Resi Terscan:</span>
-      <span class="counter-val" id="total-counter">0</span>
-    </div>
-
-    <label for="kurir" style="font-weight: 600; display: block; text-align: left; font-size: 13px; color: #334155;">PILIH NAMA KURIR / PETUGAS:</label>
-    <select id="kurir">
+    <label for="kurir" style="font-weight: 600; display: block; text-align: left; font-size: 12px; color: #475569; margin-bottom: 2px;">NAMA KURIR / PETUGAS:</label>
+    <select id="kurir" onchange="onKurirChange()">
       <option value="Akhmad Nuruddin">Akhmad Nuruddin</option>
       <option value="Muhammad Fitroh">Muhammad Fitroh</option>
       <option value="Ozi Sahara">Ozi Sahara</option>
@@ -53,58 +53,91 @@
       <option value="M Rizki Ardian">M Rizki Ardian</option>
     </select>
 
+    <div class="counter-box">
+      <span class="counter-title">Total Scan Kurir Ini:</span>
+      <span class="counter-val" id="total-counter">0</span>
+    </div>
+
+    <!-- Area Kamera Scanner Ringkas -->
     <div id="reader"></div>
+
     <div id="status" class="status-ready">Siap Melakukan Scan...</div>
     <div class="sync-info" id="sync-status">Antrean Pengiriman: 0</div>
   </div>
 
   <script>
     // MASUKKAN URL GOOGLE APPS SCRIPT ANDA
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfjK7dasVOtXekd4Yl8AL--YSATNtpBHd8ASpX2G4YGUKtYJcnkjjiyx-7JK6LEYq7/exec";
+    const SCRIPT_URL = "URL_WEB_APP_GOOGLE_SCRIPT_ANDA";
 
-    let localScannedSet = new Set();
+    // Set untuk menyimpan kombinasi "kurir|resi"
+    let scannedByKurir = new Set();
+    // Map untuk menyimpan jumlah scan per kurir secara lokal
+    let kurirCounts = {};
+
     let scanQueue = [];
     let isSyncing = false;
-    let totalCount = 0;
     let lastCode = "";
     let isProcessingScan = false;
 
-    // Audio efek BEEP saat berhasil scan
+    // Audio efek BEEP saat scan berhasil
     const beepSound = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YUtvT18AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8=");
 
-    // Ambil data awal dari Spreadsheet
+    // Ambil rekap data awal per kurir dari Google Sheets
     function initData() {
       fetch(SCRIPT_URL, { redirect: "follow" })
         .then(res => res.json())
         .then(data => {
-          if (data.total !== undefined) {
-            totalCount = data.total;
-            document.getElementById("total-counter").innerText = totalCount;
+          if (data.counts) {
+            kurirCounts = data.counts;
           }
+          if (data.history) {
+            data.history.forEach(item => {
+              scannedByKurir.add(`${item.kurir.toLowerCase()}|${item.resi.toLowerCase()}`);
+            });
+          }
+          updateCounterDisplay();
         })
-        .catch(err => console.log("Gagal sync awal"));
+        .catch(err => console.log("Gagal sync data awal"));
     }
 
     function playBeep() {
       try { beepSound.play(); } catch(e){}
     }
 
-    // FUNGSI SCAN UTAMA (INSTAN 0 DETIK)
+    function getSelectedKurir() {
+      return document.getElementById("kurir").value;
+    }
+
+    function updateCounterDisplay() {
+      const currentKurir = getSelectedKurir();
+      const count = kurirCounts[currentKurir] || 0;
+      document.getElementById("total-counter").innerText = count;
+    }
+
+    function onKurirChange() {
+      updateCounterDisplay();
+      const statusEl = document.getElementById("status");
+      statusEl.className = "status-ready";
+      statusEl.innerText = `Kurir: ${getSelectedKurir()}`;
+    }
+
+    // FUNGSI SCAN UTAMA
     function onScanSuccess(decodedText) {
       const resi = decodedText.trim();
+      const currentKurir = getSelectedKurir();
 
       if (isProcessingScan || resi === lastCode) return;
       
       isProcessingScan = true;
       lastCode = resi;
       
-      const selectedKurir = document.getElementById("kurir").value;
       const statusEl = document.getElementById("status");
+      const key = `${currentKurir.toLowerCase()}|${resi.toLowerCase()}`;
 
-      // 1. CEK DUPLIKAT LOKAL (INSTAN)
-      if (localScannedSet.has(resi.toLowerCase())) {
+      // 1. CEK DUPLIKAT HANYA PADA KURIR YANG SAMA
+      if (scannedByKurir.has(key)) {
         statusEl.className = "status-duplicate";
-        statusEl.innerText = `⚠️ [DUPLIKAT] ${resi} Sudah Ada!`;
+        statusEl.innerText = `⚠️ [DUPLIKAT KURIR] ${resi}`;
         setTimeout(() => {
           isProcessingScan = false;
           lastCode = "";
@@ -112,21 +145,23 @@
         return;
       }
 
-      // 2. TAMPILKAN HASIL BERHASIL SECARA INSTAN ALA APPSHEET
-      localScannedSet.add(resi.toLowerCase());
-      totalCount++;
-      document.getElementById("total-counter").innerText = totalCount;
+      // 2. PROSES SCAN BERHASIL (INSTAN)
+      scannedByKurir.add(key);
+      
+      // Update counter khusus kurir ini
+      kurirCounts[currentKurir] = (kurirCounts[currentKurir] || 0) + 1;
+      updateCounterDisplay();
       
       statusEl.className = "status-success";
       statusEl.innerText = `✅ [BERHASIL] ${resi}`;
       playBeep();
 
       // 3. MASUKKAN KE ANTREAN BACKGROUND
-      scanQueue.push({ resi: resi, kurir: selectedKurir });
+      scanQueue.push({ resi: resi, kurir: currentKurir });
       updateSyncStatus();
       processQueue();
 
-      // Siap untuk scan resi berikutnya dalam 0.8 detik
+      // Jeda 0.8 detik sebelum siap scan resi berikutnya
       setTimeout(() => {
         isProcessingScan = false;
         lastCode = "";
@@ -151,14 +186,12 @@
       })
       .then(res => res.json())
       .then(response => {
-        // Hapus item dari antrean jika sukses
         scanQueue.shift();
         updateSyncStatus();
         isSyncing = false;
-        processQueue(); // Lanjutkan antrean berikutnya jika ada
+        processQueue();
       })
       .catch(err => {
-        // Jika gagal koneksi, coba lagi setelah 3 detik
         setTimeout(() => {
           isSyncing = false;
           processQueue();
@@ -166,17 +199,15 @@
       });
     }
 
-    // Inisialisasi Scanner
+    // Inisialisasi Scanner dengan Ukuran Kotak Lebih Ringkas
     const html5QrcodeScanner = new Html5QrcodeScanner(
       "reader", 
       { 
-        fps: 20, // Kecepatan frame ditingkatkan
-        qrbox: { width: 320, height: 130 },
+        fps: 20,
+        qrbox: { width: 260, height: 110 }, // Kotak bidik diperkecil agar pas
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         videoConstraints: {
-          facingMode: "environment",
-          width: { min: 1280, ideal: 1920 },
-          height: { min: 720, ideal: 1080 }
+          facingMode: "environment"
         }
       }, 
       false
