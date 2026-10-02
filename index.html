@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fast Scanner Resi Paket</title>
+  <title>Fast & Sharp Scanner Resi Paket</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 12px; background-color: #f1f5f9; margin: 0; }
     .card { background: white; padding: 16px; border-radius: 12px; max-width: 420px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
     h2 { margin-top: 5px; margin-bottom: 12px; font-size: 18px; color: #0f172a; }
     
-    /* Ukuran Kamera Diperkecil & Dibuat Ringkas */
+    /* Ukuran Kamera Ringkas & Fokus Tajam */
     #reader { width: 100%; max-width: 320px; margin: 10px auto; border-radius: 10px; overflow: hidden; background: #000; }
-    #reader video { object-fit: cover; height: 200px !important; }
+    #reader video { object-fit: cover; height: 210px !important; }
     
     select { padding: 10px 12px; font-size: 15px; margin: 6px 0; width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: 600; color: #1e293b; }
     
@@ -58,7 +58,7 @@
       <span class="counter-val" id="total-counter">0</span>
     </div>
 
-    <!-- Area Kamera Scanner Ringkas -->
+    <!-- Area Kamera Scanner -->
     <div id="reader"></div>
 
     <div id="status" class="status-ready">Siap Melakukan Scan...</div>
@@ -69,20 +69,15 @@
     // MASUKKAN URL GOOGLE APPS SCRIPT ANDA
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfjK7dasVOtXekd4Yl8AL--YSATNtpBHd8ASpX2G4YGUKtYJcnkjjiyx-7JK6LEYq7/exec";
 
-    // Set untuk menyimpan kombinasi "kurir|resi"
     let scannedByKurir = new Set();
-    // Map untuk menyimpan jumlah scan per kurir secara lokal
     let kurirCounts = {};
-
     let scanQueue = [];
     let isSyncing = false;
     let lastCode = "";
     let isProcessingScan = false;
 
-    // Audio efek BEEP saat scan berhasil
     const beepSound = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YUtvT18AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8AZv8=");
 
-    // Ambil rekap data awal per kurir dari Google Sheets
     function initData() {
       fetch(SCRIPT_URL, { redirect: "follow" })
         .then(res => res.json())
@@ -121,10 +116,12 @@
       statusEl.innerText = `Kurir: ${getSelectedKurir()}`;
     }
 
-    // FUNGSI SCAN UTAMA
     function onScanSuccess(decodedText) {
       const resi = decodedText.trim();
       const currentKurir = getSelectedKurir();
+
+      // Validasi sederhana: Abaikan jika pembacaan terlalu pendek (< 3 karakter) untuk hindari noise
+      if (resi.length < 3) return;
 
       if (isProcessingScan || resi === lastCode) return;
       
@@ -134,7 +131,7 @@
       const statusEl = document.getElementById("status");
       const key = `${currentKurir.toLowerCase()}|${resi.toLowerCase()}`;
 
-      // 1. CEK DUPLIKAT HANYA PADA KURIR YANG SAMA
+      // CEK DUPLIKAT HANYA UNTUK KURIR YANG SAMA
       if (scannedByKurir.has(key)) {
         statusEl.className = "status-duplicate";
         statusEl.innerText = `⚠️ [DUPLIKAT KURIR] ${resi}`;
@@ -145,10 +142,8 @@
         return;
       }
 
-      // 2. PROSES SCAN BERHASIL (INSTAN)
+      // PROSES BERHASIL
       scannedByKurir.add(key);
-      
-      // Update counter khusus kurir ini
       kurirCounts[currentKurir] = (kurirCounts[currentKurir] || 0) + 1;
       updateCounterDisplay();
       
@@ -156,12 +151,11 @@
       statusEl.innerText = `✅ [BERHASIL] ${resi}`;
       playBeep();
 
-      // 3. MASUKKAN KE ANTREAN BACKGROUND
+      // ANTREAN PENGIRIMAN BACKGROUND
       scanQueue.push({ resi: resi, kurir: currentKurir });
       updateSyncStatus();
       processQueue();
 
-      // Jeda 0.8 detik sebelum siap scan resi berikutnya
       setTimeout(() => {
         isProcessingScan = false;
         lastCode = "";
@@ -172,7 +166,6 @@
       document.getElementById("sync-status").innerText = `Antrean Pengiriman: ${scanQueue.length}`;
     }
 
-    // PENGIRIMAN BACKGROUND KE GOOGLE SHEETS
     function processQueue() {
       if (isSyncing || scanQueue.length === 0) return;
 
@@ -199,15 +192,26 @@
       });
     }
 
-    // Inisialisasi Scanner dengan Ukuran Kotak Lebih Ringkas
+    // KONFIGURASI SCANNER DENGAN FOKUS TINGGI & FORMAT TERKUNCI
     const html5QrcodeScanner = new Html5QrcodeScanner(
       "reader", 
       { 
-        fps: 20,
-        qrbox: { width: 260, height: 110 }, // Kotak bidik diperkecil agar pas
+        fps: 25, // Frame rate dinaikkan agar lebih responsif
+        qrbox: { width: 280, height: 120 },
+        // Membatasi format khusus paket/resi agar tidak salah mendeteksi karakter buram
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ],
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        videoConstraints: {
-          facingMode: "environment"
+        videoConstraints: { 
+          facingMode: "environment",
+          width: { ideal: 1920, min: 1280 },  // Resolusi HD/Full HD untuk ketajaman
+          height: { ideal: 1080, min: 720 },
+          focusMode: "continuous"              // Auto-focus berlanjut
         }
       }, 
       false
