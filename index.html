@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fast Scanner & Manual Input Resi Paket</title>
+  <title>Fast Scanner & Flexible Delete Resi Paket</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 12px; background-color: #f1f5f9; margin: 0; }
@@ -26,16 +26,21 @@
     .status-success { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
     .status-duplicate { background-color: #fef3c7; color: #b45309; border: 1px solid #fde047; }
     .status-error { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
-    .status-delete { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    .status-delete { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
     
-    .sync-info { font-size: 11px; color: #64748b; margin-top: 6px; }
+    .sync-info { font-size: 11px; color: #64748b; margin-top: 8px; }
 
-    /* Form Input Manual & Action Buttons */
-    .manual-box { display: flex; gap: 6px; margin-top: 10px; }
-    .manual-input { flex: 1; padding: 10px; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 600; text-transform: uppercase; }
-    .btn-submit { background: #2563eb; color: white; border: none; padding: 10px 14px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; }
-    .btn-delete { background: #ef4444; color: white; border: none; padding: 10px; width: 100%; margin-top: 8px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; }
-    .btn-submit:active, .btn-delete:active { opacity: 0.8; }
+    /* Section Inputs & Actions */
+    .input-group { display: flex; gap: 6px; margin-top: 10px; }
+    .input-field { flex: 1; padding: 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 600; text-transform: uppercase; }
+    
+    .btn-submit { background: #2563eb; color: white; border: none; padding: 10px 12px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; }
+    .btn-delete-custom { background: #dc2626; color: white; border: none; padding: 10px 12px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; }
+    .btn-delete-last { background: #ef4444; color: white; border: none; padding: 10px; width: 100%; margin-top: 8px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    
+    .btn-submit:active, .btn-delete-custom:active, .btn-delete-last:active { opacity: 0.8; }
+    
+    .divider { margin: 12px 0 8px 0; border-top: 1px dashed #cbd5e1; }
   </style>
 </head>
 <body>
@@ -70,15 +75,22 @@
     <div id="reader"></div>
 
     <!-- Form Input Manual Keyboard -->
-    <div class="manual-box">
-      <input type="text" id="manual-resi" class="manual-input" placeholder="⌨️ Ketik No. Resi Manual..." onkeypress="handleKeyPress(event)">
+    <div class="input-group">
+      <input type="text" id="manual-resi" class="input-field" placeholder="⌨️ Input Resi Manual..." onkeypress="handleKeyPress(event)">
       <button class="btn-submit" onclick="submitManual()">Kirim</button>
     </div>
 
     <div id="status" class="status-ready">Siap Melakukan Scan...</div>
     
-    <!-- Tombol Hapus Resi Terakhir -->
-    <button class="btn-delete" onclick="deleteLastResi()">🗑️ Hapus Resi Terakhir Scan</button>
+    <div class="divider"></div>
+
+    <!-- Fitur Hapus Custom & Hapus Terakhir -->
+    <div class="input-group">
+      <input type="text" id="delete-resi-input" class="input-field" placeholder="🔍 Ketik No. Resi Hapus..." onkeypress="handleDeleteKeyPress(event)">
+      <button class="btn-delete-custom" onclick="deleteCustomResi()">Hapus</button>
+    </div>
+
+    <button class="btn-delete-last" onclick="deleteLastResi()">🗑️ Hapus Resi Terakhir Kurir Ini</button>
 
     <div class="sync-info" id="sync-status">Antrean Pengiriman: 0</div>
   </div>
@@ -89,7 +101,7 @@
 
     let scannedByKurir = new Set();
     let kurirCounts = {};
-    let lastScannedResiPerKurir = {}; // Menyimpan resi terakhir per kurir untuk fungsi hapus
+    let historyByKurir = {}; // Array resi terurut per kurir
     let scanQueue = [];
     let isSyncing = false;
     let lastCode = "";
@@ -109,7 +121,9 @@
               const k = item.kurir;
               const r = item.resi;
               scannedByKurir.add(`${k.toLowerCase()}|${r.toLowerCase()}`);
-              lastScannedResiPerKurir[k] = r;
+              
+              if (!historyByKurir[k]) historyByKurir[k] = [];
+              historyByKurir[k].push(r);
             });
           }
           updateCounterDisplay();
@@ -151,7 +165,7 @@
       // CEK DUPLIKAT HANYA UNTUK KURIR YANG SAMA
       if (scannedByKurir.has(key)) {
         statusEl.className = "status-duplicate";
-        statusEl.innerText = `⚠️ [DUPLIKAT KURIR] ${resi}`;
+        statusEl.innerText = `⚠️️ [DUPLIKAT KURIR] ${resi}`;
         setTimeout(() => {
           isProcessingScan = false;
           lastCode = "";
@@ -162,7 +176,10 @@
       // PROSES BERHASIL
       scannedByKurir.add(key);
       kurirCounts[currentKurir] = (kurirCounts[currentKurir] || 0) + 1;
-      lastScannedResiPerKurir[currentKurir] = resi;
+      
+      if (!historyByKurir[currentKurir]) historyByKurir[currentKurir] = [];
+      historyByKurir[currentKurir].push(resi);
+
       updateCounterDisplay();
       
       statusEl.className = "status-success";
@@ -196,7 +213,7 @@
       if (!resiVal) return;
       
       processResiInput(resiVal, "MANUAL");
-      inputEl.value = ""; // Kosongkan input setelah dikirim
+      inputEl.value = "";
     }
 
     function handleKeyPress(e) {
@@ -205,34 +222,84 @@
       }
     }
 
-    // FUNGSI HAPUS RESI TERAKHIR
+    // FUNGSI EKSEKUSI HAPUS RESI (LOKAL & QUEUE GOOGLE SHEETS)
+    function executeDelete(resiTarget) {
+      const currentKurir = getSelectedKurir();
+      const statusEl = document.getElementById("status");
+      const key = `${currentKurir.toLowerCase()}|${resiTarget.toLowerCase()}`;
+
+      // Hapus dari Set Duplikat lokal
+      scannedByKurir.delete(key);
+      
+      // Kurangi Counter
+      kurirCounts[currentKurir] = Math.max(0, (kurirCounts[currentKurir] || 1) - 1);
+      
+      // Hapus dari Riwayat Array lokal
+      if (historyByKurir[currentKurir]) {
+        const index = historyByKurir[currentKurir].lastIndexOf(resiTarget);
+        if (index !== -1) {
+          historyByKurir[currentKurir].splice(index, 1);
+        }
+      }
+
+      updateCounterDisplay();
+
+      statusEl.className = "status-delete";
+      statusEl.innerText = `🗑️ [BERHASIL DIHAPUS] ${resiTarget}`;
+
+      // Kirim perintah hapus ke Apps Script
+      scanQueue.push({ action: "delete", resi: resiTarget, kurir: currentKurir });
+      updateSyncStatus();
+      processQueue();
+    }
+
+    // 1. FUNGSI HAPUS RESI TERAKHIR (Dapat diklik berkali-kali secara berurutan)
     function deleteLastResi() {
       const currentKurir = getSelectedKurir();
-      const lastResi = lastScannedResiPerKurir[currentKurir];
-      const statusEl = document.getElementById("status");
+      const historyList = historyByKurir[currentKurir] || [];
 
-      if (!lastResi) {
-        alert(`Belum ada riwayat scan untuk kurir: ${currentKurir}`);
+      if (historyList.length === 0) {
+        alert(`Belum ada riwayat resi untuk kurir: ${currentKurir}`);
         return;
       }
 
-      if (confirm(`Yakin ingin menghapus resi terakhir (${lastResi}) milik ${currentKurir}?`)) {
-        const key = `${currentKurir.toLowerCase()}|${lastResi.toLowerCase()}`;
-        
-        // Hapus dari memori lokal
-        scannedByKurir.delete(key);
-        kurirCounts[currentKurir] = Math.max(0, (kurirCounts[currentKurir] || 1) - 1);
-        delete lastScannedResiPerKurir[currentKurir];
-        
-        updateCounterDisplay();
+      const lastResi = historyList[historyList.length - 1];
 
-        statusEl.className = "status-delete";
-        statusEl.innerText = `🗑️ [DIHAPUS] ${lastResi}`;
+      if (confirm(`Hapus resi terakhir (${lastResi}) milik ${currentKurir}?`)) {
+        executeDelete(lastResi);
+      }
+    }
 
-        // Kirim permintaan hapus ke Google Sheets
-        scanQueue.push({ action: "delete", resi: lastResi, kurir: currentKurir });
-        updateSyncStatus();
-        processQueue();
+    // 2. FUNGSI HAPUS CUSTOM RESI (Berdasarkan nomor resi yang diketik)
+    function deleteCustomResi() {
+      const inputEl = document.getElementById("delete-resi-input");
+      const resiTarget = inputEl.value.trim();
+      const currentKurir = getSelectedKurir();
+
+      if (!resiTarget) {
+        alert("Silakan masukkan nomor resi yang ingin dihapus!");
+        return;
+      }
+
+      const key = `${currentKurir.toLowerCase()}|${resiTarget.toLowerCase()}`;
+
+      if (!scannedByKurir.has(key)) {
+        if (!confirm(`Resi (${resiTarget}) tidak ditemukan di sesi ini untuk ${currentKurir}. Tetap kirim perintah hapus ke Google Sheets?`)) {
+          return;
+        }
+      } else {
+        if (!confirm(`Yakin ingin menghapus resi (${resiTarget}) milik ${currentKurir}?`)) {
+          return;
+        }
+      }
+
+      executeDelete(resiTarget);
+      inputEl.value = ""; // Clear input
+    }
+
+    function handleDeleteKeyPress(e) {
+      if (e.key === "Enter") {
+        deleteCustomResi();
       }
     }
 
