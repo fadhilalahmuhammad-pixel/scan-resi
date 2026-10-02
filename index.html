@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fast & Sharp Scanner Resi Paket</title>
+  <title>Fast Scanner & Manual Input Resi Paket</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 12px; background-color: #f1f5f9; margin: 0; }
     .card { background: white; padding: 16px; border-radius: 12px; max-width: 420px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
     h2 { margin-top: 5px; margin-bottom: 12px; font-size: 18px; color: #0f172a; }
     
-    /* Ukuran Kamera Ringkas & Fokus Tajam */
+    /* Area Kamera Scanner */
     #reader { width: 100%; max-width: 320px; margin: 10px auto; border-radius: 10px; overflow: hidden; background: #000; }
     #reader video { object-fit: cover; height: 210px !important; }
     
@@ -26,8 +26,16 @@
     .status-success { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
     .status-duplicate { background-color: #fef3c7; color: #b45309; border: 1px solid #fde047; }
     .status-error { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .status-delete { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
     
     .sync-info { font-size: 11px; color: #64748b; margin-top: 6px; }
+
+    /* Form Input Manual & Action Buttons */
+    .manual-box { display: flex; gap: 6px; margin-top: 10px; }
+    .manual-input { flex: 1; padding: 10px; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 600; text-transform: uppercase; }
+    .btn-submit { background: #2563eb; color: white; border: none; padding: 10px 14px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; }
+    .btn-delete { background: #ef4444; color: white; border: none; padding: 10px; width: 100%; margin-top: 8px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .btn-submit:active, .btn-delete:active { opacity: 0.8; }
   </style>
 </head>
 <body>
@@ -61,7 +69,17 @@
     <!-- Area Kamera Scanner -->
     <div id="reader"></div>
 
+    <!-- Form Input Manual Keyboard -->
+    <div class="manual-box">
+      <input type="text" id="manual-resi" class="manual-input" placeholder="⌨️ Ketik No. Resi Manual..." onkeypress="handleKeyPress(event)">
+      <button class="btn-submit" onclick="submitManual()">Kirim</button>
+    </div>
+
     <div id="status" class="status-ready">Siap Melakukan Scan...</div>
+    
+    <!-- Tombol Hapus Resi Terakhir -->
+    <button class="btn-delete" onclick="deleteLastResi()">🗑️ Hapus Resi Terakhir Scan</button>
+
     <div class="sync-info" id="sync-status">Antrean Pengiriman: 0</div>
   </div>
 
@@ -71,6 +89,7 @@
 
     let scannedByKurir = new Set();
     let kurirCounts = {};
+    let lastScannedResiPerKurir = {}; // Menyimpan resi terakhir per kurir untuk fungsi hapus
     let scanQueue = [];
     let isSyncing = false;
     let lastCode = "";
@@ -87,7 +106,10 @@
           }
           if (data.history) {
             data.history.forEach(item => {
-              scannedByKurir.add(`${item.kurir.toLowerCase()}|${item.resi.toLowerCase()}`);
+              const k = item.kurir;
+              const r = item.resi;
+              scannedByKurir.add(`${k.toLowerCase()}|${r.toLowerCase()}`);
+              lastScannedResiPerKurir[k] = r;
             });
           }
           updateCounterDisplay();
@@ -116,18 +138,13 @@
       statusEl.innerText = `Kurir: ${getSelectedKurir()}`;
     }
 
-    function onScanSuccess(decodedText) {
-      const resi = decodedText.trim();
+    // PROSES INPUT RESI (DARI KAMERA MAUPUN KEYBOARD)
+    function processResiInput(resiText, sourceName = "SCAN") {
+      const resi = resiText.trim();
       const currentKurir = getSelectedKurir();
 
-      // Validasi sederhana: Abaikan jika pembacaan terlalu pendek (< 3 karakter) untuk hindari noise
       if (resi.length < 3) return;
 
-      if (isProcessingScan || resi === lastCode) return;
-      
-      isProcessingScan = true;
-      lastCode = resi;
-      
       const statusEl = document.getElementById("status");
       const key = `${currentKurir.toLowerCase()}|${resi.toLowerCase()}`;
 
@@ -145,14 +162,15 @@
       // PROSES BERHASIL
       scannedByKurir.add(key);
       kurirCounts[currentKurir] = (kurirCounts[currentKurir] || 0) + 1;
+      lastScannedResiPerKurir[currentKurir] = resi;
       updateCounterDisplay();
       
       statusEl.className = "status-success";
-      statusEl.innerText = `✅ [BERHASIL] ${resi}`;
+      statusEl.innerText = `✅ [BERHASIL ${sourceName}] ${resi}`;
       playBeep();
 
-      // ANTREAN PENGIRIMAN BACKGROUND
-      scanQueue.push({ resi: resi, kurir: currentKurir });
+      // PUSH KE ANTREAN (ACTION: ADD)
+      scanQueue.push({ action: "add", resi: resi, kurir: currentKurir });
       updateSyncStatus();
       processQueue();
 
@@ -160,6 +178,62 @@
         isProcessingScan = false;
         lastCode = "";
       }, 800);
+    }
+
+    // CALLBACK DISCAN KAMERA
+    function onScanSuccess(decodedText) {
+      const resi = decodedText.trim();
+      if (isProcessingScan || resi === lastCode) return;
+      isProcessingScan = true;
+      lastCode = resi;
+      processResiInput(resi, "SCAN");
+    }
+
+    // INPUT MANUAL KEYBOARD
+    function submitManual() {
+      const inputEl = document.getElementById("manual-resi");
+      const resiVal = inputEl.value.trim();
+      if (!resiVal) return;
+      
+      processResiInput(resiVal, "MANUAL");
+      inputEl.value = ""; // Kosongkan input setelah dikirim
+    }
+
+    function handleKeyPress(e) {
+      if (e.key === "Enter") {
+        submitManual();
+      }
+    }
+
+    // FUNGSI HAPUS RESI TERAKHIR
+    function deleteLastResi() {
+      const currentKurir = getSelectedKurir();
+      const lastResi = lastScannedResiPerKurir[currentKurir];
+      const statusEl = document.getElementById("status");
+
+      if (!lastResi) {
+        alert(`Belum ada riwayat scan untuk kurir: ${currentKurir}`);
+        return;
+      }
+
+      if (confirm(`Yakin ingin menghapus resi terakhir (${lastResi}) milik ${currentKurir}?`)) {
+        const key = `${currentKurir.toLowerCase()}|${lastResi.toLowerCase()}`;
+        
+        // Hapus dari memori lokal
+        scannedByKurir.delete(key);
+        kurirCounts[currentKurir] = Math.max(0, (kurirCounts[currentKurir] || 1) - 1);
+        delete lastScannedResiPerKurir[currentKurir];
+        
+        updateCounterDisplay();
+
+        statusEl.className = "status-delete";
+        statusEl.innerText = `🗑️ [DIHAPUS] ${lastResi}`;
+
+        // Kirim permintaan hapus ke Google Sheets
+        scanQueue.push({ action: "delete", resi: lastResi, kurir: currentKurir });
+        updateSyncStatus();
+        processQueue();
+      }
     }
 
     function updateSyncStatus() {
@@ -192,13 +266,12 @@
       });
     }
 
-    // KONFIGURASI SCANNER DENGAN FOKUS TINGGI & FORMAT TERKUNCI
+    // KONFIGURASI SCANNER
     const html5QrcodeScanner = new Html5QrcodeScanner(
       "reader", 
       { 
-        fps: 25, // Frame rate dinaikkan agar lebih responsif
+        fps: 25,
         qrbox: { width: 280, height: 120 },
-        // Membatasi format khusus paket/resi agar tidak salah mendeteksi karakter buram
         formatsToSupport: [
           Html5QrcodeSupportedFormats.CODE_128,
           Html5QrcodeSupportedFormats.CODE_39,
@@ -209,9 +282,8 @@
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         videoConstraints: { 
           facingMode: "environment",
-          width: { ideal: 1920, min: 1280 },  // Resolusi HD/Full HD untuk ketajaman
-          height: { ideal: 1080, min: 720 },
-          focusMode: "continuous"              // Auto-focus berlanjut
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 }
         }
       }, 
       false
