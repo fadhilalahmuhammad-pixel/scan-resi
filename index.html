@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fast Scanner & WA Submit Resi Paket</title>
+  <title>Fast Scanner & Flexible Delete Resi Paket</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 12px; background-color: #f1f5f9; margin: 0; }
@@ -38,10 +38,7 @@
     .btn-delete-custom { background: #dc2626; color: white; border: none; padding: 10px 12px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; }
     .btn-delete-last { background: #ef4444; color: white; border: none; padding: 10px; width: 100%; margin-top: 8px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; }
     
-    /* Tombol Submit Notif WA */
-    .btn-wa-submit { background: #16a34a; color: white; border: none; padding: 12px; width: 100%; margin-top: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 6px rgba(22, 163, 74, 0.3); }
-
-    .btn-submit:active, .btn-delete-custom:active, .btn-delete-last:active, .btn-wa-submit:active { opacity: 0.8; }
+    .btn-submit:active, .btn-delete-custom:active, .btn-delete-last:active { opacity: 0.8; }
     
     .divider { margin: 12px 0 8px 0; border-top: 1px dashed #cbd5e1; }
   </style>
@@ -84,9 +81,6 @@
     </div>
 
     <div id="status" class="status-ready">Siap Melakukan Scan...</div>
-
-    <!-- Tombol Submit Rekap Ke Admin WA -->
-    <button class="btn-wa-submit" onclick="submitToAdminWA()">📲 SUBMIT & KIRIM NOTIF WA</button>
     
     <div class="divider"></div>
 
@@ -104,12 +98,10 @@
   <script>
     // MASUKKAN URL GOOGLE APPS SCRIPT ANDA
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfjK7dasVOtXekd4Yl8AL--YSATNtpBHd8ASpX2G4YGUKtYJcnkjjiyx-7JK6LEYq7/exec";
-    // ISIKAN NOMOR WA ADMIN (Gunakan format 628xxx)
-    const WA_ADMIN_NUMBER = "6285806073923"; 
 
     let scannedByKurir = new Set();
     let kurirCounts = {};
-    let historyByKurir = {};
+    let historyByKurir = {}; // Array resi terurut per kurir
     let scanQueue = [];
     let isSyncing = false;
     let lastCode = "";
@@ -160,6 +152,7 @@
       statusEl.innerText = `Kurir: ${getSelectedKurir()}`;
     }
 
+    // PROSES INPUT RESI (DARI KAMERA MAUPUN KEYBOARD)
     function processResiInput(resiText, sourceName = "SCAN") {
       const resi = resiText.trim();
       const currentKurir = getSelectedKurir();
@@ -169,9 +162,10 @@
       const statusEl = document.getElementById("status");
       const key = `${currentKurir.toLowerCase()}|${resi.toLowerCase()}`;
 
+      // CEK DUPLIKAT HANYA UNTUK KURIR YANG SAMA
       if (scannedByKurir.has(key)) {
         statusEl.className = "status-duplicate";
-        statusEl.innerText = `⚠️ [DUPLIKAT KURIR] ${resi}`;
+        statusEl.innerText = `⚠️️ [DUPLIKAT KURIR] ${resi}`;
         setTimeout(() => {
           isProcessingScan = false;
           lastCode = "";
@@ -179,6 +173,7 @@
         return;
       }
 
+      // PROSES BERHASIL
       scannedByKurir.add(key);
       kurirCounts[currentKurir] = (kurirCounts[currentKurir] || 0) + 1;
       
@@ -191,6 +186,7 @@
       statusEl.innerText = `✅ [BERHASIL ${sourceName}] ${resi}`;
       playBeep();
 
+      // PUSH KE ANTREAN (ACTION: ADD)
       scanQueue.push({ action: "add", resi: resi, kurir: currentKurir });
       updateSyncStatus();
       processQueue();
@@ -201,6 +197,7 @@
       }, 800);
     }
 
+    // CALLBACK DISCAN KAMERA
     function onScanSuccess(decodedText) {
       const resi = decodedText.trim();
       if (isProcessingScan || resi === lastCode) return;
@@ -209,6 +206,7 @@
       processResiInput(resi, "SCAN");
     }
 
+    // INPUT MANUAL KEYBOARD
     function submitManual() {
       const inputEl = document.getElementById("manual-resi");
       const resiVal = inputEl.value.trim();
@@ -224,58 +222,19 @@
       }
     }
 
-    // FUNGSI SUBMIT NOTIFIKASI WA ADMIN
-    function submitToAdminWA() {
-      const currentKurir = getSelectedKurir();
-      const totalCount = kurirCounts[currentKurir] || 0;
-
-      if (totalCount === 0) {
-        alert(`Belum ada data scan untuk kurir: ${currentKurir}`);
-        return;
-      }
-
-      if (confirm(`Submit rekap scan ${currentKurir} (${totalCount} Paket) dan kirim notifikasi WA ke Admin?`)) {
-        const payload = {
-          action: "submit_wa",
-          kurir: currentKurir,
-          totalScan: totalCount
-        };
-
-        const statusEl = document.getElementById("status");
-        statusEl.className = "status-success";
-        statusEl.innerText = `⏳ Mengirim Notifikasi WA...`;
-
-        fetch(SCRIPT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload)
-        })
-        .then(res => res.json())
-        .then(res => {
-          statusEl.className = "status-success";
-          statusEl.innerText = `✅ Rekap ${currentKurir} Berhasil Di-submit!`;
-          
-          // Membuka direct WhatsApp link sebagai cadangan/langsung
-          const textPesan = `📦 *REKAP SCAN RESI PAKET*\n━━━━━━━━━━━━━━━━━━━\n👤 *Kurir:* ${currentKurir}\n📊 *Total Scan:* ${totalCount} Paket\n⏰ *Waktu:* ${new Date().toLocaleString('id-ID')}\n━━━━━━━━━━━━━━━━━━━\nData telah selesai di-scan & tersimpan di Google Sheets.`;
-          const waUrl = `https://wa.me/${WA_ADMIN_NUMBER}?text=${encodeURIComponent(textPesan)}`;
-          window.open(waUrl, '_blank');
-        })
-        .catch(err => {
-          alert("Gagal kirim notif otomatis. Membuka WhatsApp Direct...");
-          const textPesan = `📦 *REKAP SCAN RESI PAKET*\n━━━━━━━━━━━━━━━━━━━\n👤 *Kurir:* ${currentKurir}\n📊 *Total Scan:* ${totalCount} Paket\n━━━━━━━━━━━━━━━━━━━`;
-          window.open(`https://wa.me/${WA_ADMIN_NUMBER}?text=${encodeURIComponent(textPesan)}`, '_blank');
-        });
-      }
-    }
-
+    // FUNGSI EKSEKUSI HAPUS RESI (LOKAL & QUEUE GOOGLE SHEETS)
     function executeDelete(resiTarget) {
       const currentKurir = getSelectedKurir();
       const statusEl = document.getElementById("status");
       const key = `${currentKurir.toLowerCase()}|${resiTarget.toLowerCase()}`;
 
+      // Hapus dari Set Duplikat lokal
       scannedByKurir.delete(key);
+      
+      // Kurangi Counter
       kurirCounts[currentKurir] = Math.max(0, (kurirCounts[currentKurir] || 1) - 1);
       
+      // Hapus dari Riwayat Array lokal
       if (historyByKurir[currentKurir]) {
         const index = historyByKurir[currentKurir].lastIndexOf(resiTarget);
         if (index !== -1) {
@@ -288,11 +247,13 @@
       statusEl.className = "status-delete";
       statusEl.innerText = `🗑️ [BERHASIL DIHAPUS] ${resiTarget}`;
 
+      // Kirim perintah hapus ke Apps Script
       scanQueue.push({ action: "delete", resi: resiTarget, kurir: currentKurir });
       updateSyncStatus();
       processQueue();
     }
 
+    // 1. FUNGSI HAPUS RESI TERAKHIR (Dapat diklik berkali-kali secara berurutan)
     function deleteLastResi() {
       const currentKurir = getSelectedKurir();
       const historyList = historyByKurir[currentKurir] || [];
@@ -309,6 +270,7 @@
       }
     }
 
+    // 2. FUNGSI HAPUS CUSTOM RESI (Berdasarkan nomor resi yang diketik)
     function deleteCustomResi() {
       const inputEl = document.getElementById("delete-resi-input");
       const resiTarget = inputEl.value.trim();
@@ -322,7 +284,7 @@
       const key = `${currentKurir.toLowerCase()}|${resiTarget.toLowerCase()}`;
 
       if (!scannedByKurir.has(key)) {
-        if (!confirm(`Resi (${resiTarget}) tidak ditemukan di sesi ini. Tetap hapus di Google Sheets?`)) {
+        if (!confirm(`Resi (${resiTarget}) tidak ditemukan di sesi ini untuk ${currentKurir}. Tetap kirim perintah hapus ke Google Sheets?`)) {
           return;
         }
       } else {
@@ -332,7 +294,7 @@
       }
 
       executeDelete(resiTarget);
-      inputEl.value = "";
+      inputEl.value = ""; // Clear input
     }
 
     function handleDeleteKeyPress(e) {
@@ -371,6 +333,7 @@
       });
     }
 
+    // KONFIGURASI SCANNER
     const html5QrcodeScanner = new Html5QrcodeScanner(
       "reader", 
       { 
